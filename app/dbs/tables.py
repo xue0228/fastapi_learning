@@ -1,6 +1,6 @@
 import sqlalchemy as sa
 
-from app.databases.base import metadata
+from app.dbs.base import metadata
 
 
 users = sa.Table(

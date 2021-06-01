@@ -22,7 +22,7 @@ fileConfig(config.config_file_name)
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from app.settings import MIGRATION_URL
-from app.databases.tables import metadata
+from app.dbs.tables import metadata
 
 config.set_main_option('sqlalchemy.url', str(MIGRATION_URL))
 target_metadata = metadata

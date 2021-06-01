@@ -4,8 +4,8 @@ from pydantic import Field, BaseModel
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.errors import *
-from app.databases.base import aio_db
-from app.databases.tables import users
+from app.dbs.base import aio_db
+from app.dbs.tables import users
 from app.utils import pwd_context
 from app.routers.auth import get_current_user
 

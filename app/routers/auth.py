@@ -7,8 +7,8 @@ from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from app.settings import SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
-from app.databases.base import aio_db
-from app.databases.tables import users
+from app.dbs.base import aio_db
+from app.dbs.tables import users
 from app.utils import pwd_context
 
 

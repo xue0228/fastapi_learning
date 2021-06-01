@@ -4,19 +4,20 @@ from typing import List, Union
 from io import BytesIO
 
 from base64 import b64encode, b64decode
-from fastapi import APIRouter, Depends, File, UploadFile, Body, HTTPException, status, Path
+from fastapi import Response, APIRouter, Depends, File, UploadFile, Body, HTTPException, status, Path, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.sql import and_
 from sqlalchemy.engine.result import RowProxy
 from PIL import Image
 
-from app.databases.base import aio_db
-from app.databases.tables import images, user_image
+from app.dbs.base import aio_db
+from app.dbs.tables import images, user_image
 from app.routers.auth import get_current_user
 from app.routers.users import UserOut
 from app.settings import UPLOAD_PATH, AES_KEY
-from app.utils import *
+from app.utils import time_to_str, encrypt_by_aes, decrypt_by_aes, get_dirname_from_datetime
+from app.utils import read_file, save_file, is_image, get_md5_hash
 
 router = APIRouter(
     prefix='/api/v1/images',
@@ -140,7 +141,6 @@ async def get_private_image(
             user_image.c.image_id == image_id,
             user_image.c.user_id == user.user_id
         ))) is None:
-            print('None')
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail='No such image'
@@ -178,6 +178,7 @@ async def get_public_image(
         thumb: bool = False,
         compress: bool = True,
 ):
+    image_hash_name = image_hash_name.lower()
     # 定义无图片错误
     no_image_exception = HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -295,3 +296,98 @@ async def upload_image(
         user_image_db = await db.fetch_one(user_image.select().where(user_image.c.user_image_id == user_image_id))
 
     return get_image_return(image_db, user_image_db)
+
+
+@router.put('/{image_id}', response_model=ImageOut, description='修改图片相关信息')
+async def modify_image(
+        image_id: int,
+        private: bool = Form(...),
+        user: UserOut = Depends(get_current_user),
+):
+    async with aio_db as db:
+        # 判断该用户是否存储有该id图片
+        user_image_db = await db.fetch_one(user_image.select().where(and_(
+                user_image.c.image_id == image_id,
+                user_image.c.user_id == user.user_id
+        )))
+        if user_image_db is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='No such image'
+            )
+
+        # 修改数据库中相关数据
+        user_image_id = await db.execute(
+            query=user_image.update().where(user_image.c.user_image_id == user_image_db.user_image_id),
+            values={
+                'is_private': private,
+                'updated_time': datetime.datetime.utcnow(),
+            }
+        )
+
+        # 查询两表中的数据
+        image_db = await db.fetch_one(images.select().where(images.c.image_id == image_id))
+        user_image_db = await db.fetch_one(user_image.select().where(user_image.c.user_image_id == user_image_id))
+
+    return get_image_return(image_db, user_image_db)
+
+
+@router.delete(
+    '/{image_id}',
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    description='删除指定图片',
+)
+async def delete_image(
+        image_id: int,
+        user: UserOut = Depends(get_current_user),
+):
+    async with aio_db as db:
+        # 判断该用户是否存储有该id图片
+        user_image_db = await db.fetch_one(user_image.select().where(and_(
+            user_image.c.image_id == image_id,
+            user_image.c.user_id == user.user_id
+        )))
+        if user_image_db is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='No such image'
+            )
+
+        user_image_dbs = await db.fetch_all(user_image.select().where(
+            user_image.c.image_id == image_id
+        ))
+
+        transaction = await aio_db.transaction()
+        try:
+            # await transaction.start()
+            await db.execute(user_image.delete().where(
+                user_image.c.user_image_id == user_image_db.user_image_id
+            ))
+            if len(user_image_dbs) == 1:
+                image_db = await db.fetch_one(images.select().where(
+                    images.c.image_id == image_id
+                ))
+
+                image_path = get_image_path(image_db)
+                thumb_image_path = get_thumb_image_path(image_db)
+                compress_image_path = get_compress_image_path(image_db)
+
+                await db.execute(images.delete().where(
+                    images.c.image_id == image_id
+                ))
+
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+                if os.path.exists(thumb_image_path):
+                    os.remove(thumb_image_path)
+                if os.path.exists(compress_image_path):
+                    os.remove(compress_image_path)
+        except Exception:
+            await transaction.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        else:
+            await transaction.commit()
+    # return Response(status_code=status.HTTP_204_NO_CONTENT)

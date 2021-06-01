@@ -1,13 +1,13 @@
 import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pymysql.err import IntegrityError
 
 from app.middlewares import ProcessTimeHeaderMiddleware
 from app.routers import images, auth, users
-from app.databases.base import aio_db
+from app.dbs.base import aio_db
 from app.errors import *
 
 
@@ -40,11 +40,17 @@ app.add_exception_handler(HasUsedException, has_used_exception_handler)
 # app.add_exception_handler(IntegrityError, integrity_error_handler)
 
 
-@app.get("/")
+@app.get('/')
 async def root():
-    # time.sleep(1)
-    # async with aio_db as db:
-    #     print(db)
-    # raise LengthException('xue', None, 10)
-    raise HasUsedException('xue')
-    # return {"message": "Hello World"}
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run(
+        app,
+        host='127.0.0.1',
+        port=8000,
+        log_level='info',
+        # http='httptools',
+    )
