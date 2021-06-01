@@ -2,9 +2,10 @@ import datetime
 import os
 from typing import List, Union
 from io import BytesIO
+from enum import Enum
 
 from base64 import b64encode, b64decode
-from fastapi import Response, APIRouter, Depends, File, UploadFile, Body, HTTPException, status, Path, Form
+from fastapi import Query, Response, APIRouter, Depends, File, UploadFile, Body, HTTPException, status, Path, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.sql import and_
@@ -35,6 +36,17 @@ class ImageOut(BaseModel):
     user_id: int
     private_url: str
     public_url: str = ''
+
+
+class OrderBy(str, Enum):
+    updated_time = 0
+    created_time = 1
+
+
+class Filter(str, Enum):
+    all = 0
+    private = 1
+    public = 2
 
 
 def get_image_return(image_db: RowProxy, user_image_db: RowProxy) -> dict:
@@ -117,9 +129,41 @@ async def generate_compress_image(
 
 
 @router.get('/', response_model=List[ImageOut])
-async def get_images(user: UserOut = Depends(get_current_user)):
+async def get_images(
+        user: UserOut = Depends(get_current_user),
+        ascending: bool = False,
+        limit: int = Query(10, gt=0, le=100),
+        page: int = Query(1, gt=0),
+        order_by: OrderBy = Query(0),
+        filter: Filter = Query(0),
+):
+    query = user_image.select()
+    if filter == Filter.private:
+        query = query.where(and_(
+            user_image.c.user_id == user.user_id,
+            user_image.c.is_private == True,
+        ))
+    elif filter == Filter.public:
+        query = query.where(and_(
+            user_image.c.user_id == user.user_id,
+            user_image.c.is_private == False,
+        ))
+    elif filter == Filter.all:
+        query = query.where(user_image.c.user_id == user.user_id)
+    if order_by == OrderBy.updated_time:
+        if ascending:
+            query = query.order_by(user_image.c.updated_time.asc())
+        else:
+            query = query.order_by(user_image.c.updated_time.desc())
+    elif order_by == OrderBy.created_time:
+        if ascending:
+            query = query.order_by(user_image.c.created_time.asc())
+        else:
+            query = query.order_by(user_image.c.created_time.desc())
+    query = query.limit(limit).offset((page - 1) * limit)
+
     async with aio_db as db:
-        user_image_dbs = await db.fetch_all(user_image.select().where(user_image.c.user_id == user.user_id))
+        user_image_dbs = await db.fetch_all(query)
         res = []
         for user_image_db in user_image_dbs:
             image_db = await db.fetch_one(images.select().where(
