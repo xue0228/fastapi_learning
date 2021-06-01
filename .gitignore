@@ -2,3 +2,7 @@
 *.pyc
 migrations/versions/*
 upload/*
+app/__pycache__/settings.cpython-38.pyc
+app/routers/__pycache__/images.cpython-38.pyc
+migrations/__pycache__/env.cpython-38.pyc
+app/settings.py
