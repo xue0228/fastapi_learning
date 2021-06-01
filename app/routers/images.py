@@ -390,4 +390,3 @@ async def delete_image(
             )
         else:
             await transaction.commit()
-    # return Response(status_code=status.HTTP_204_NO_CONTENT)
